@@ -1,13 +1,13 @@
 import os
 import pandas as pd
-from Bio import SeqIO
+from Bio import SeqIO, pairwise2
 from transformers import AutoTokenizer, BigBirdForMaskedLM
 import torch
 
 # ----------------------------
 MODEL_NAME = "AIRI-Institute/gena-lm-bigbird-base-t2t"
 MAX_LENGTH = 4096
-NUM_SAMPLES = 6
+NUM_SAMPLES = 10
 
 CONTIGS_FILE = "data/simulated_draft_genomes/contigs/AP012051.1_contigs.fasta"
 GAPS_FILE = "data/simulated_draft_genomes/gaps/AP012051.1_gaps.tsv"
@@ -32,9 +32,9 @@ def build_masked_input(left_seq, right_seq):
     #mask_count=1
     #masked_gap = " ".join(["[MASK]"] * mask_count)
     # Take the last 1000 nt of the previous contig (left_seq)
-    left = left_seq[-1000:] if len(left_seq) > 1000 else left_seq
+    left = left_seq # [-1000:] if len(left_seq) > 1000 else left_seq
     # Take the first 1000 nt of the next contig (right_seq)
-    right = right_seq[:1000] if len(right_seq) > 1000 else right_seq
+    right = right_seq # [:1000] if len(right_seq) > 1000 else right_seq
     #return f"{left} {masked_gap} {right}"
     return f"{left} [MASKS] {right}"
 
@@ -83,11 +83,45 @@ def predict_until_length(masked_input_base, tokenizer, model, gap_length, max_at
 
         # Predict tokens at each [MASK]
         predicted_tokens = []
+        '''
         for idx in mask_token_index:
             logits = outputs.logits[0, idx]
             predicted_id = torch.argmax(logits).item()
             token = tokenizer.convert_ids_to_tokens(predicted_id)
             predicted_tokens.append(token)
+        '''
+        threshold = 0.01  # Adjustable value
+
+        for idx in mask_token_index:
+            logits = outputs.logits[0, idx]
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+
+            # Filter tokens by probability threshold
+            above_thresh = (probs >= threshold).nonzero(as_tuple=True)[0]
+
+            if len(above_thresh) == 0:
+                predicted_id = torch.argmax(probs).item()
+                token = tokenizer.convert_ids_to_tokens(predicted_id)
+                print(f"[MASK @ pos {idx.item()}] No token surpasses the threshold. Using argmax → {token}")
+            else:
+                # Show candidate tokens and their probabilities
+                filtered_probs = probs[above_thresh]
+                tokens = tokenizer.convert_ids_to_tokens(above_thresh.tolist())
+                probs_list = filtered_probs.tolist()
+
+                print(f"[MASK @ pos {idx.item()}] Candidate okens (p ≥ {threshold}):")
+                for t, p in zip(tokens, probs_list):
+                    print(f"    {t:10} → {p:.4f}")
+
+                # Proportional sampling
+                filtered_probs /= filtered_probs.sum()
+                sampled_idx = torch.multinomial(filtered_probs, num_samples=1).item()
+                predicted_id = above_thresh[sampled_idx].item()
+                token = tokenizer.convert_ids_to_tokens(predicted_id)
+                print(f"→ Token selected: {token}")
+
+            predicted_tokens.append(token)
+        
 
         # Join predicted tokens and compute sequence length
         predicted_seq = "".join(predicted_tokens).replace("▁", "")
@@ -161,13 +195,25 @@ def main():
         for n in range(NUM_SAMPLES):
             #prediction = predict_masked_sequence(masked_input, tokenizer, model)
             prediction = predict_until_length(masked_input_base, tokenizer, model, gap_len)
+
+            # Calculate identity percentage
+            alignments = pairwise2.align.globalxx(prediction, real_gap_seq)
+            if alignments:
+                best_alignment = alignments[0]
+                alignment_score = best_alignment.score
+                alignment_length = max(len(prediction), len(real_gap_seq))
+                identity_percentage = alignment_score / alignment_length * 100
+            else:
+                identity_percentage = 0.0
+
             
             results.append({
                 "gap_id": gap_id,
                 "prediction_number": n + 1,
                 "predicted_sequence": prediction,
                 "real_sequence": real_gap_seq,
-                "gap_length": gap_len
+                "gap_length": gap_len,
+                "identity_percent": round(identity_percentage, 2)
             })
             print(f"Prediction {n+1} ")
 
