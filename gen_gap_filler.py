@@ -75,6 +75,9 @@ def predict_until_length(masked_input_base, tokenizer, model, gap_length, max_at
 
         # Tokenize and predict
         inputs = tokenizer(masked_input, return_tensors="pt", truncation=True, max_length=MAX_LENGTH)
+        
+        print(f"[INFO] Number of input tokens: {inputs.input_ids.shape[1]}")
+
         with torch.no_grad():
             outputs = model(**inputs)
 
