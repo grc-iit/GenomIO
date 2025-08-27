@@ -245,9 +245,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-- **Lab**: GRC (Genomics Research Center)
-- **Email**: your-email@example.com
-- **Issues**: [GitHub Issues](https://github.com/yourusername/GenomIO/issues)
+- **GRC**: Gnosis Research Center)
+- **Email**: grc@illinoistech.edu
+- **Issues**: [GitHub Issues](https://github.com/grc-iit/GenomIO/issues)
 
 ## 🙏 Acknowledgments
 
@@ -260,10 +260,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you use GenomIO in your research, please cite:
 
 ```bibtex
-@software{genomio2024,
+@software{genomio2025,
   title={GenomIO: Genomic Gap Filling with Large Language Models},
-  author={GRC Lab},
-  year={2024},
-  url={https://github.com/yourusername/GenomIO}
+  author={Gnosis Research Center | Illinois Tech},
+  year={2025},
+  url={https://github.com/grc-iit/GenomIO}
 }
 ```
