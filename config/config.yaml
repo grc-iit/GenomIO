@@ -1,0 +1,66 @@
+# GenomIO Configuration File
+# Configuration for genomic gap filling using LLMs
+
+# Model Configuration
+models:
+  dnabert2:
+    name: "zhihan1996/DNABERT-2-117M"
+    max_length: 512
+    mask_token: "[MASK]"
+    
+  grover:
+    name: "grover-base"
+    max_length: 1024
+    
+  gena_lm:
+    name: "AIRI-Institute/gena-lm-bigbird-base-t2t"
+    max_length: 4096
+    mask_token: "[MASK]"
+    
+  nucleotide_transformer:
+    name: "InstaDeepAI/nucleotide-transformer-500m-1000g"
+    max_length: 1000
+
+# RAG Configuration
+rag:
+  corpus_directory: "data/rag_corpus"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  vector_store: "faiss"
+  top_k_results: 5
+  chunk_size: 1000
+  chunk_overlap: 200
+
+# Gap Filling Configuration
+gap_filling:
+  max_gap_size: 10000
+  min_context_length: 500
+  num_samples: 10
+  temperature: 0.8
+  top_p: 0.9
+  
+# Agent Configuration  
+agents:
+  planner:
+    model: "gemini-pro"
+    temperature: 0.1
+    max_retries: 3
+    
+# Data Paths
+data:
+  simulated_genomes: "data/simulated_draft_genomes"
+  contigs_dir: "data/simulated_draft_genomes/contigs"
+  gaps_dir: "data/simulated_draft_genomes/gaps" 
+  test_sequences: "data/test_sequences"
+  results_dir: "results"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "genomio.log"
+
+# Environment Configuration
+environment:
+  device: "auto"  # "cpu", "cuda", or "auto"
+  cache_dir: ".cache"
+  random_seed: 42
