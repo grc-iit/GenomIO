@@ -261,9 +261,11 @@ If you use GenomIO in your research, please cite:
 
 ```bibtex
 @software{genomio2025,
-  title={GenomIO: Genomic Gap Filling with Large Language Models},
-  author={Gnosis Research Center | Illinois Tech},
-  year={2025},
+  title   = {GenIO: Leveraging LLM Advancements in the Detection, Analysis, and Filling of Gaps During DNA Sequencing},
+  author  = {Clara Aparicio Mendez},
+  year    = {2025},
+  school  = {Illinois Institute of Technology},
+  institution = {Gnosis Research Center},
   url={https://github.com/grc-iit/GenomIO}
 }
 ```
