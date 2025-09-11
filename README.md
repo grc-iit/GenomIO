@@ -28,32 +28,38 @@ pip install -e .
 ```
 
 ### Basic Usage
-
-```python
-from src.core.gap_filler import GapFiller
-from src.models.dnabert2 import DNABert2Model
-
-# Initialize model and gap filler
-model = DNABert2Model()
-gap_filler = GapFiller(model)
-
-# Fill gaps in a sequence
-sequence_with_gaps = "ATCGATCG---GCTAGCT"
-filled_sequence = gap_filler.fill_gaps(sequence_with_gaps)
-print(filled_sequence)
-```
-
-### Using the Command Line Interface
+Run the agent pipeline directly from the command line:
 
 ```bash
-# Download genomic data
-genomio-download
+cd gap-filler-agents
+python test.py
+```
 
-# Fill gaps in genomic sequences
-genomio-gap-fill --input data/contigs/sample.fasta --output results/filled.fasta
+**Payload passed to the agent (`planner`)**:
 
-# Evaluate model performance
-genomio-evaluate --model dnabert2 --test-data data/test_sequences/
+```json
+{
+  "sequence": "ATGCGT...---...GCTAGC", 
+  "gap_length": 500,
+  "meta": {
+    "gap_id": "AP012051.1_gap1",
+    "contig1_header": "AP012051.1_contig1",
+    "contig2_header": "AP012051.1_contig2"
+  }
+}
+```
+**Example output**:
+```bash
+[DEBUG] Gap info: {'gap_id': 'AP012051.1_gap1', 'start': 1000, 'end': 1500, 'length': 500, 'gap_sequence': '...'}
+[INFO] Using full contigs:
+  contig1: AP012051.1_contig1 (len=45231)
+  contig2: AP012051.1_contig2 (len=38942)
+[INFO] Sequence passed to the agent:
+  Total length (without dashes): 84173
+  Start: ATGCGTACGATCGTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA...
+  End: ...GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA
+[DEBUG] Calling plan() with gap_length=500
+[Final Output]: {'predicted_sequence': 'ATCG...GCTA', 'confidence': 0.87}
 ```
 
 ## 📁 Project Structure
@@ -133,59 +139,127 @@ The framework includes comprehensive evaluation tools:
 
 ### 1. Basic Gap Filling
 
-```python
-from src.core.gap_filler import GapFiller
-from src.models.dnabert2 import DNABert2Model
+Run the standard gap filling pipeline:
 
-model = DNABert2Model()
-filler = GapFiller(model)
-
-# Single sequence
-result = filler.fill_gap("ATCG---GCTA", gap_length=150)
-print(f"Filled sequence: {result}")
+```bash
+cd src/core
+python gap_filler.py
 ```
 
+- Loads contigs and gaps (.fasta + .tsv)
+- Predicts the missing sequence using [MASK] tokens
+- Saves results to results_[accession-number].csv
 ### 2. RAG-Enhanced Gap Filling
 
+Run the RAG pipeline (retrieves context from .fna files in rag_corpus/):
+
 ```python  
-from src.core.gap_filler_rag import RAGGapFiller
-
-rag_filler = RAGGapFiller(
-    model_name="dnabert2",
-    corpus_path="data/rag_corpus/",
-    top_k=5
-)
-
-result = rag_filler.fill_gap_with_context("ATCG---GCTA")
+cd src/core
+python gap_filler_rag.py
 ```
+- Build a FAISS index from .fna files in rag_corpus/
+- Run with RAG → saves results_[accession-number]_rag.csv
 
 ### 3. Batch Processing
 
+Run the evaluation script to benchmark one or more test folders with the selected model(s).  
+The script reads `.txt` files with the format:
 ```python
-from src.core.evaluation import ModelEvaluator
+CONTEXT:
+<left_context_sequence>
 
-evaluator = ModelEvaluator()
-results = evaluator.evaluate_model(
-    model="gena_lm",
-    test_data_path="data/simulated_draft_genomes/",
-    output_path="results/evaluation.csv"
-)
+TARGET:
+<target_gap_sequence>
+```
+#### Configure `evaluation.py`
+
+Edit the **ENTRY POINT** at the bottom of `evaluation.py` to set your folders and models:
+
+```python
+# ENTRY POINT
+if __name__ == "__main__":
+    test_folders = [
+        "data/test_sequences/5000bp"  # <-- your folder(s) with CONTEXT/TARGET .txt files
+    ]
+
+    # Choose one or more model names (HF repo ids)
+    # Examples:
+    # "AIRI-Institute/gena-lm-bigbird-base-t2t"
+    # "zhihan1996/DNABERT-2-117M"
+    # "PoetschLab/GROVER"
+    # "InstaDeepAI/nucleotide-transformer-v2-250m-multi-species"
+    model_names = ["AIRI-Institute/gena-lm-bigbird-base-t2t"]
+
+    for model_name in model_names:
+        main(test_folders, model_name)
+```
+Run
+```python
+cd src/core
+python evaluation.py
+``` 
+Results are written to:
+```bash
+./results/<model_name>/<folder_name>_results.csv
 ```
 
-## ⚙️ Configuration
+### 4. Agent-based Pipeline
 
-Configuration is managed through `config/config.yaml`:
 
-```yaml
-models:
-  dnabert2:
-    name: "zhihan1996/DNABERT-2-117M"
-    max_length: 512
-    
-gap_filling:
-  max_gap_size: 10000
-  num_samples: 10
-  temperature: 0.8
+This example shows how the **planner agent** orchestrates two tools to retrieve context and fill a genomic gap.  
+It uses your `test.py`, `rag/gap_filler.py`, `rag/retriever.py`, and `agents/planner.py`.
+
+---
+
+#### How it works
+
+1. **Load inputs (test.py)**  
+   - Reads the target gap from `simulated_draft_genomes/gaps/AP012051.1_gaps.tsv` (fields: `gap_id, start, end, length, sequence`).  
+   - Reads the first two contigs from `simulated_draft_genomes/contigs/AP012051.1_contigs.fasta`.  
+   - Builds an input sequence with a **gap marker** `---` between contig1 and contig2 flanks:
+     ```
+     <...contig1_tail>---<contig2_head>
+     ```
+   - Prepares the payload:
+     ```json
+     {
+       "sequence": "ATGCGT...---...GCTAGC",
+       "gap_length": 500,
+       "meta": {
+         "gap_id": "AP012051.1_gap1",
+         "contig1_header": "AP012051.1_contig1",
+         "contig2_header": "AP012051.1_contig2"
+       }
+     }
+     ```
+
+2. **Plan & Tools (agents/planner.py)**  
+   - Creates a **tool-calling agent** with a **strict order**:
+     1) `context_tool` → retrieves up to 3 matching sequences from `rag_corpus` (via `rag/retriever.py`).  
+     2) `gap_filler_tool` → fills the `---` using a masked LM (**Gena-LM BigBird**) (via `rag/gap_filler.py`).
+   - **Critical rules enforced in the system prompt**:
+     - The agent **must** pass the user-provided `gap_length` **exactly** to the gap filler.  
+     - `context_tool` → first; `gap_filler_tool` → second.
+
+3. **Context retrieval (rag/retriever.py)**  
+   - Extracts DNA-like text from the `sequence` (ACGTN and dashes).  
+   - Splits by `---` and searches `.fna`/`.fasta` files in `rag_corpus` for **exact** or **partial** matches.  
+   - Returns up to **3** best matches (metadata + sequence) as plain text for the gap filler.
+
+4. **Gap filling (rag/gap_filler.py)**  
+   - Loads `AIRI-Institute/gena-lm-bigbird-base-t2t`.  
+   - Builds a masked prompt with **`[MASKS]`** between left/right contexts (optionally augmented with retrieved text).  
+   - Iteratively adjusts the number of `[MASK]` tokens to approach `gap_length` (±3 nt tolerance).
+
+5. **Final output**  
+   - The planner returns a concise result (e.g., predicted sequence and confidence/notes).  
+   - `test.py` prints the final output.
+
+Run
+
+```bash
+cd genomio/gap-filler-agents
+python test.py
 ```
 
 ## 📚 Data
